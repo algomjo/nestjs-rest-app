@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-// interfaces/user-avatar.interface.ts
+// interfaces/UserAvatar.ts
 
 import { Document, Schema, Types } from 'mongoose';
 
