@@ -1,15 +1,15 @@
 /* eslint-disable prettier/prettier */
 // app.service.ts
 
-import { Injectable } from '@nestjs/common';
-import axios from 'axios';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { User } from './interfaces/user.interface';
+import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { encode } from 'base64-arraybuffer';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { User } from './interfaces/user.interface';
 import { UserAvatar } from './interfaces/UserAvatar';
 
 @Injectable()
@@ -51,50 +51,67 @@ export class AppService {
   }
 
   async getUserAvatar(userId: string) {
-    // Verificar se o avatar já foi salvo no banco de dados
-    let userAvatar: UserAvatar = await this.userAvatarModel.findOne({ userId }).exec();
+    try {
+      // Verificar se o usuário existe na API "https://reqres.in/"
+      const userResponse = await axios.get(`https://reqres.in/api/users/${userId}`);
+      const userData = userResponse.data.data;
 
-    if (!userAvatar) {
-      // Se o avatar não estiver no banco de dados, obtenha-o da URL "avatar"
-      const response = await axios.get(`https://reqres.in/api/users/${userId}/avatar`, {
-        responseType: 'arraybuffer',
-      });
+      if (!userData.avatar) {
+        throw new NotFoundException('User avatar not found.');
+      }
 
-      // Converta o buffer da imagem em base64
-      const base64Avatar = encode(new Uint8Array(response.data));
+      // Verificar se o avatar já foi salvo no banco de dados
+      let userAvatar: UserAvatar = await this.userAvatarModel.findOne({ userId }).exec();
 
-      // Salve o avatar como um arquivo no diretório "avatars"
-      const avatarFileName = `${userId}-${uuidv4()}.png`;
-      const avatarPath = path.join(__dirname, '..', 'avatars', avatarFileName);
-      await fs.writeFile(avatarPath, response.data);
+      if (!userAvatar) {
+        // Se o avatar não estiver no banco de dados, obtenha-o da URL "avatar"
+        const response = await axios.get(userData.avatar, {
+          responseType: 'arraybuffer',
+        });
 
-      // Salve o avatar no banco de dados
-      userAvatar = await this.userAvatarModel.create({
-        userId,
-        hash: avatarFileName,
-        avatar: base64Avatar,
-      });
-    } else {
-      // Se o avatar estiver no banco de dados, recupere-o do diretório "avatars"
-      const avatarPath = path.join(__dirname, '..', 'avatars', userAvatar.hash);
-      const avatarBuffer = await fs.readFile(avatarPath);
-      userAvatar.avatar = encode(new Uint8Array(avatarBuffer));
+        // Converta o buffer da imagem em base64
+        const base64Avatar = encode(new Uint8Array(response.data));
+
+        // Salve o avatar como um arquivo no diretório "avatars"
+        const avatarFileName = `${userId}-${uuidv4()}.png`;
+        const avatarPath = path.join(__dirname, '..', 'avatars', avatarFileName);
+        await fs.writeFile(avatarPath, response.data);
+
+        // Salve o avatar no banco de dados
+        userAvatar = await this.userAvatarModel.create({
+          userId,
+          hash: avatarFileName,
+          avatar: base64Avatar,
+        });
+      }
+
+      // Recupere a representação codificada em base64 do avatar do banco de dados
+      return { avatar: userAvatar.avatar };
+    } catch (error) {
+      throw new NotFoundException('User not found.');
     }
-
-    return { avatar: userAvatar.avatar };
   }
 
   async deleteUserAvatar(userId: string) {
-    // Excluir o arquivo do armazenamento do sistema de arquivos (FileSystem)
-    const userAvatar: UserAvatar = await this.userAvatarModel.findOne({ userId }).exec();
+    try {
+      // Verificar se o usuário existe no banco de dados
+      const userAvatar: UserAvatar = await this.userAvatarModel.findOne({ userId }).exec();
 
-    if (userAvatar) {
+      if (!userAvatar) {
+        throw new NotFoundException('User avatar not found.');
+      }
+
+      // Excluir o arquivo do armazenamento do sistema de arquivos (FileSystem)
       const avatarPath = path.join(__dirname, '..', 'avatars', userAvatar.hash);
       await fs.unlink(avatarPath);
-      await this.userAvatarModel.deleteOne({ userId });
-    }
 
-    return { message: 'Avatar deleted successfully.' };
+      // Remover a entrada do banco de dados
+      await this.userAvatarModel.deleteOne({ userId });
+
+      return { message: 'Avatar deleted successfully.' };
+    } catch (error) {
+      throw new NotFoundException('User not found.');
+    }
   }
 
   // Simula o envio de e-mail

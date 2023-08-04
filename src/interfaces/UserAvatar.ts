@@ -1,10 +1,16 @@
 /* eslint-disable prettier/prettier */
 // interfaces/user-avatar.interface.ts
 
-import { Document } from 'mongoose';
+import { Document, Schema, Types } from 'mongoose';
 
 export interface UserAvatar extends Document {
-  userId: number;
+  userId: Types.ObjectId;
   avatar: string;
-  hash: string;
+  hash: string; // Mantenha o atributo hash
 }
+
+export const UserAvatarSchema = new Schema({
+  userId: Schema.Types.ObjectId,
+  avatar: String,
+  hash: String, // Mantenha o atributo hash
+});
